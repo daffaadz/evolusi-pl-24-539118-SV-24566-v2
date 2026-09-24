@@ -1,0 +1,41 @@
+# Dependencies
+/vendor
+vendor/
+/node_modules
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Docker
+.dockerignore
+Dockerfile
+
+# Testing & Cache
+.phpunit.result.cache
+.phpunit.cache
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+
+# Logs
+storage/logs/*.log
+*.log
+
+# IDE & OS files
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
