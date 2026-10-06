@@ -1,6 +1,13 @@
-FROM php:8.4-cli-alpine
+# syntax=docker/dockerfile:1
 
-# Install system dependencies and required PHP extension libraries
+# ==============================================================================
+# STAGE 1: BUILDER
+# Tahap membangun. Boleh besar: Composer, compiler ekstensi, header library.
+# Tidak ikut ke image akhir.
+# ==============================================================================
+FROM php:8.4.26-cli-alpine3.24 AS builder
+
+# Dependensi sistem untuk membangun ekstensi PHP dan menjalankan Composer
 RUN apk add --no-cache \
     git \
     unzip \
@@ -9,34 +16,51 @@ RUN apk add --no-cache \
     linux-headers \
     && docker-php-ext-install pdo_mysql pdo_sqlite zip bcmath
 
-# Install Composer binary from official Composer image
-COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+# Composer binary dengan versi dikunci
+COPY --from=composer:2.8 /usr/bin/composer /usr/local/bin/composer
 
-# Set working directory inside container
 WORKDIR /var/www/html
 
-# DOCKER LAYER CACHING
+# DOCKER LAYER CACHING: file dependensi disalin dan dipasang SEBELUM kode aplikasi
 COPY composer.json composer.lock ./
-
-# Pasang dependensi PHP tanpa dev dependencies & scripts
 RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
 
-# Salin seluruh berkas kode aplikasi (kecuali di .dockerignore)
+# Salin seluruh kode aplikasi (kecuali yang ada di .dockerignore)
 COPY . .
 
-# Generate autoloader teroptimasi setelah kode aplikasi disalin
+# Autoloader teroptimasi setelah kode aplikasi disalin
 RUN composer dump-autoload --optimize
 
-# Salin konfigurasi environment dari .env.example dan generate APP_KEY
+# Siapkan .env dari .env.example dan generate APP_KEY
 RUN cp -n .env.example .env && \
     php artisan key:generate
 
-# Berikan izin tulis untuk storage, bootstrap/cache, dan database
+
+# ==============================================================================
+# STAGE 2: RUNTIME
+# Tahap menjalankan. Hanya berisi yang dibutuhkan saat melayani request:
+# PHP + ekstensi hasil build + library runtime + kode aplikasi.
+# Tanpa Composer, git, unzip, header, dan compiler.
+# ==============================================================================
+FROM php:8.4.26-cli-alpine3.24 AS runtime
+
+# Hanya library runtime (tanpa paket -dev)
+RUN apk add --no-cache \
+    libzip \
+    sqlite-libs
+
+# Ambil ekstensi PHP yang sudah dikompilasi dari builder
+COPY --from=builder /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
+COPY --from=builder /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
+
+WORKDIR /var/www/html
+
+# Ambil aplikasi lengkap (vendor + kode + .env) dari builder
+COPY --from=builder /var/www/html /var/www/html
+
+# Izin tulis untuk storage, bootstrap/cache, dan database
 RUN chmod -R 775 storage bootstrap/cache database
 
-# Expose port aplikasi Laravel
 EXPOSE 8000
 
-# Jalankan migrasi database saat container dinyalakan dan jalankan server Laravel
 CMD ["sh", "-c", "touch database/database.sqlite && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=8000"]
-
