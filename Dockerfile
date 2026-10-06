@@ -61,6 +61,15 @@ COPY --from=builder /var/www/html /var/www/html
 # Izin tulis untuk storage, bootstrap/cache, dan database
 RUN chmod -R 775 storage bootstrap/cache database
 
+# Container TIDAK boleh berjalan sebagai root: pakai www-data (bawaan image)
+# dan beri kepemilikan hanya pada direktori yang perlu ditulis.
+RUN chown -R www-data:www-data storage bootstrap/cache database
+USER www-data
+
 EXPOSE 8000
+
+# HEALTHCHECK memakai route /up bawaan Laravel (wget tersedia di busybox alpine)
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -q --spider http://127.0.0.1:8000/up || exit 1
 
 CMD ["sh", "-c", "touch database/database.sqlite && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=8000"]
